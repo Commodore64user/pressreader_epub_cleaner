@@ -108,12 +108,14 @@ def update_metadata_files(temp_path: Path, deleted_files: set, epub_type: str):
 
             f.seek(0); f.write(str(soup)); f.truncate()
 
-def clean_epub(epub_path: Path):
+def clean_epub(epub_path: Path, keep_first: bool = False):
     if not epub_path.is_file():
         print(f"Error: File not found at {epub_path}"); return
 
     output_path = epub_path.with_name(f"{epub_path.stem}_clean.epub")
     print(f"Processing '{epub_path.name}'...")
+    if keep_first:
+        print("Mode: --keep-first flag detected. Keeping the first instance of each article.")
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
@@ -146,7 +148,14 @@ def clean_epub(epub_path: Path):
             if len(path_list) == 1:
                 articles_to_keep.add((article_hash, path_list[0]))
             else:
-                correct_path = find_correct_version(path_list)
+                if keep_first:
+                    # Sort paths by page number and keep the very first one
+                    sorted_paths = sorted(path_list, key=lambda p: get_page_num_from_path(p) or 0)
+                    correct_path = sorted_paths[0]
+                else:
+                    # Use the default "first of the last consecutive block" rule
+                    correct_path = find_correct_version(path_list)
+
                 if correct_path:
                     articles_to_keep.add((article_hash, correct_path))
 
@@ -209,5 +218,6 @@ def clean_epub(epub_path: Path):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Clean PressReader ePub files by removing duplicate articles.")
     parser.add_argument("epub_file", type=str, help="The path to the .epub file to be cleaned.")
+    parser.add_argument("--keep-first", action="store_true", help="Keep the very first instance of an article, useful for files without a 'Content' section.")
     args = parser.parse_args()
-    clean_epub(Path(args.epub_file))
+    clean_epub(Path(args.epub_file), keep_first=args.keep_first)

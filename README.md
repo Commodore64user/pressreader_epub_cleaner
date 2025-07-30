@@ -13,7 +13,7 @@ This script is designed to fix both issues automatically.
 ## Features
 
 -   Automatically detects the ePub type (Raw PressReader vs. Calibre-converted).
--   Applies a robust rule ("first page of the last consecutive block") to intelligently resolve all duplicates.
+-   Applies a robust rule ("first page of the last consecutive block") to intelligently resolve all duplicates from problems 1 and 2 mentioned earlier.
 -   Correctly removes "Contents" section previews while keeping the real articles. (this is the case, at least for The Economist)
 -   Correctly removes multi-page spread duplicates, keeping only one article.
 -   Deletes now-empty XHTML files to prevent blank pages in the final ePub.
@@ -22,7 +22,7 @@ This script is designed to fix both issues automatically.
 
 ## Requirements
 
-* Python 3.7+
+* Python 3.9+
 * BeautifulSoup4
 * lxml
 
@@ -39,9 +39,12 @@ Command
 ```bash
 python3.13 pressreader_cleaner.py "/path/to/your/newspaper.epub"
 ```
+
+for publications that don't have a table of contents section (i.e., broadsheets, tabloids), it is recommended to use the `--keep-first` flag. This will keep the first instance of an article instead of the first of the last continous block. Example: an article might have been printed in full in page 5 (page number matched to physical copy), and again in pages 27, 28 (it's a double page spread, printed in full 3 times). Standard mode will keep the one from page 27, and keep-first will keep the one in page 5.
+
 ## Screenshots
 
 <img width="540" height="437" alt="FileManager_2025-07-30_144655" src="https://github.com/user-attachments/assets/eb1ed0e5-a0ea-402f-a7e3-8c04dfbab757" />
 
-Note that for The Economist, the new ePub is roughly a third the size of the original and  for The New Yorker, one fifth of the size (in terms of page count), broadsheets and tabloids which tend to have fewer multi-page spreads still benefit but slightly less, roughly a 15pc reduction in this case.
+Note that for The Economist, the new ePub is roughly two thirds the size of the original and for The New Yorker, one fifth of the size (in terms of page count), broadsheets and tabloids which tend to have fewer multi-page spreads still benefit but slightly less, roughly a 15pc reduction in this case.
 
