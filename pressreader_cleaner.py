@@ -8,6 +8,22 @@ from bs4 import BeautifulSoup
 import tempfile
 from collections import defaultdict
 
+def detect_epub_type(temp_path: Path) -> str:
+    """
+    Detects if the ePub is a raw PressReader file or a Calibre-converted one
+    by checking for Calibre's footprint in the content.opf file.
+    """
+    # Search for content.opf in the entire unzipped directory
+    opf_file = next(temp_path.glob("**/content.opf"), None)
+    if opf_file:
+        with open(opf_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        if 'calibre' in content:
+            print("Detection: Calibre-converted ePub found.")
+            return 'calibre'
+    print("Detection: Raw PressReader ePub found.")
+    return 'raw'
+
 def get_article_hash(article_tag):
     """Generates a SHA256 hash from the body text (<p> tags) of an article."""
     paragraphs = article_tag.find_all('p')
@@ -20,38 +36,45 @@ def get_page_num_from_path(path: Path):
     return int(match.group(1)) if match else None
 
 def find_correct_version(path_list: list[Path]) -> Path:
-    """Finds the correct version of an article to keep from a list of paths.
-    Rule: Keep the first page of the last consecutive block of pages."""
+    """
+    Finds the correct version of an article to keep from a list of paths.
+    Rule: Keep the first page of the last consecutive block of pages.
+    """
     if not path_list:
         return None
 
-    # Create a list of (page_number, path) tuples and sort it
     pages = sorted([(get_page_num_from_path(p), p) for p in path_list if get_page_num_from_path(p) is not None])
 
     if not pages:
-        return None
+        return path_list[0] # Fallback if no page numbers found
 
-    # The last item in the sorted list is our initial candidate to keep
     correct_page_num, correct_path = pages[-1]
 
-    # Iterate backwards to find the start of the last consecutive block
     for i in range(len(pages) - 2, -1, -1):
         page_num, path = pages[i]
         if page_num == correct_page_num - 1:
-            correct_page_num, correct_path = page_num, path # Move to the earlier consecutive page
+            correct_page_num, correct_path = page_num, path
         else:
-            break # The consecutive block has ended
+            break
 
     return correct_path
 
-def update_metadata_files(temp_path: Path, deleted_files: set):
+def update_metadata_files(temp_path: Path, deleted_files: set, epub_type: str):
     """Parses OPF and NCX files to remove all references to deleted XHTML files."""
+
+    # Determine correct base paths based on ePub type
+    if epub_type == 'raw':
+        # In raw files, opf and ncx are inside OEBPS
+        metadata_base_path = next(temp_path.glob("**/OEBPS"), temp_path)
+    else: # calibre
+        # In Calibre files, they are in the root
+        metadata_base_path = temp_path
+
     oebps_path = next(temp_path.glob("**/OEBPS"), temp_path)
+    deleted_rel_paths = {f.relative_to(metadata_base_path).as_posix() for f in deleted_files}
 
-    deleted_rel_to_root = {f.relative_to(temp_path).as_posix() for f in deleted_files}
-    deleted_rel_to_oebps = {f.relative_to(oebps_path).as_posix() for f in deleted_files}
-
-    opf_file = next(temp_path.glob("*.opf"), None)
+    # Update content.opf
+    opf_file = next(metadata_base_path.glob("*.opf"), None)
     if opf_file:
         print("Updating content.opf manifest...")
         with open(opf_file, 'r+', encoding='utf-8') as f:
@@ -59,7 +82,7 @@ def update_metadata_files(temp_path: Path, deleted_files: set):
             ids_to_delete = set()
 
             for item in soup.select('manifest item[href$=".xhtml"]'):
-                if item.get('href') in deleted_rel_to_root:
+                if item.get('href') in deleted_rel_paths:
                     ids_to_delete.add(item.get('id'))
                     item.decompose()
 
@@ -69,7 +92,8 @@ def update_metadata_files(temp_path: Path, deleted_files: set):
 
             f.seek(0); f.write(str(soup)); f.truncate()
 
-    ncx_file = next(oebps_path.glob("*.ncx"), None)
+    # Update toc.ncx
+    ncx_file = next(metadata_base_path.glob("*.ncx"), None)
     if ncx_file:
         print("Updating toc.ncx navigation...")
         with open(ncx_file, 'r+', encoding='utf-8') as f:
@@ -79,7 +103,7 @@ def update_metadata_files(temp_path: Path, deleted_files: set):
                 content_tag = navpoint.select_one('content')
                 if content_tag and content_tag.get('src'):
                     src_path = content_tag['src'].split('#')[0]
-                    if src_path in deleted_rel_to_oebps:
+                    if src_path in deleted_rel_paths:
                         navpoint.decompose()
 
             f.seek(0); f.write(str(soup)); f.truncate()
@@ -95,23 +119,29 @@ def clean_epub(epub_path: Path):
         temp_path = Path(temp_dir)
         with zipfile.ZipFile(epub_path, 'r') as zip_ref: zip_ref.extractall(temp_path)
 
+        # Step 1: Detect type and set the correct article marker
+        epub_type = detect_epub_type(temp_path)
+        if epub_type == 'calibre':
+            article_selector_args = ('div', {'class': 'toc'})
+        else: # raw
+            article_selector_args = ('div', {'class': 'art-cnt'})
+
         oebps_path = next(temp_path.glob("**/OEBPS"), temp_path)
         all_xhtml_files = sorted(oebps_path.glob("page-*/**/*.xhtml"))
 
-        # Stage 1: Gather information on all articles and where they appear
-        print("Stage 1: Analysing article locations...")
+        # Stage 1: Gather information
+        print("Stage 1: Analyzing article locations...")
         hashes_to_paths = defaultdict(list)
-        total_articles_found = 0
         for xhtml_file in all_xhtml_files:
             with open(xhtml_file, 'r', encoding='utf-8') as f:
                 soup = BeautifulSoup(f, 'xml')
-            for article in soup.find_all('div', class_='toc'):
+            for article in soup.find_all(*article_selector_args):
                 article_hash = get_article_hash(article)
                 hashes_to_paths[article_hash].append(xhtml_file)
-                total_articles_found += 1
 
         # Stage 2: Decide which single version of each article to keep
-        articles_to_keep = set() # Stores tuples of (hash, path)
+        print("Stage 2: Deciding which articles to keep...")
+        articles_to_keep = set()
         for article_hash, path_list in hashes_to_paths.items():
             if len(path_list) == 1:
                 articles_to_keep.add((article_hash, path_list[0]))
@@ -120,8 +150,8 @@ def clean_epub(epub_path: Path):
                 if correct_path:
                     articles_to_keep.add((article_hash, correct_path))
 
-        # Stage 3: Clean the files based on the decisions
-        print("Stage 2: Cleaning files...")
+        # Stage 3: Clean the files
+        print("Stage 3: Cleaning files...")
         files_to_delete = set()
         articles_removed_count = 0
 
@@ -129,7 +159,7 @@ def clean_epub(epub_path: Path):
             with open(xhtml_file, 'r', encoding='utf-8') as f:
                 soup = BeautifulSoup(f, 'xml')
 
-            articles_in_file = soup.find_all('div', class_='toc')
+            articles_in_file = soup.find_all(*article_selector_args)
             if not articles_in_file or not soup.body: continue
 
             articles_kept_in_file = 0
@@ -149,13 +179,13 @@ def clean_epub(epub_path: Path):
 
         # Stage 4: Delete empty files and update metadata
         if files_to_delete:
-            print(f"Stage 3: Removing {len(files_to_delete)} empty files and updating manifest...")
-            update_metadata_files(temp_path, files_to_delete)
+            print(f"Stage 4: Removing {len(files_to_delete)} empty files and updating manifest...")
+            update_metadata_files(temp_path, files_to_delete, epub_type)
             for f in files_to_delete:
                 if f.is_file(): f.unlink()
 
         # Stage 5: Re-pack the ePub
-        print("Stage 4: Re-packing the clean ePub...")
+        print("Stage 5: Re-packing the clean ePub...")
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             mimetype_path = temp_path / 'mimetype'
             if mimetype_path.exists():
