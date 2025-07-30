@@ -39,7 +39,9 @@ Command
 ```bash
 python3.13 pressreader_cleaner.py "/path/to/your/newspaper.epub"
 ```
+## Screenshot
 
+<img width="540" height="437" alt="FileManager_2025-07-30_144655" src="https://github.com/user-attachments/assets/eb1ed0e5-a0ea-402f-a7e3-8c04dfbab757" />
 
-
+Note that for The Economist and The New Yorker, the new ePub is roughly half the size in terms of page count, broadsheets and tabloids which tend to have fewer page spreads still benefit but slightly less.
 
