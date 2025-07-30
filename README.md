@@ -43,5 +43,5 @@ python3.13 pressreader_cleaner.py "/path/to/your/newspaper.epub"
 
 <img width="540" height="437" alt="FileManager_2025-07-30_144655" src="https://github.com/user-attachments/assets/eb1ed0e5-a0ea-402f-a7e3-8c04dfbab757" />
 
-Note that for The Economist, the new ePub is roughly half the size and  for and The New Yorker, one quarter of the size in terms of page count, broadsheets and tabloids which tend to have fewer multi-page spreads still benefit but slightly less, roughly a 10pc reduction in this case.
+Note that for The Economist, the new ePub is roughly a third the size of the original and  for The New Yorker, one fifth of the size (in terms of page count), broadsheets and tabloids which tend to have fewer multi-page spreads still benefit but slightly less, roughly a 15pc reduction in this case.
 
