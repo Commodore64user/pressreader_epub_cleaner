@@ -50,10 +50,8 @@ def get_page_num_from_path(path: Path):
     return int(match.group(1)) if match else None
 
 def find_correct_version(path_list: list[Path]) -> Path:
-    """
-    Finds the correct version of an article to keep from a list of paths.
-    Rule: Keep the first page of the last consecutive block of pages.
-    """
+    """Finds the correct version of an article to keep from a list of paths.
+    Rule: Keep the first page of the last consecutive block of pages."""
     if not path_list:
         return None
 
@@ -75,7 +73,6 @@ def find_correct_version(path_list: list[Path]) -> Path:
 
 def update_metadata_files(temp_path: Path, deleted_files: set, epub_type: str):
     """Parses OPF and NCX files to remove all references to deleted XHTML files."""
-
     # Determine correct base paths based on ePub type
     if epub_type == 'raw':
         # In raw files, opf and ncx are inside OEBPS
@@ -84,7 +81,6 @@ def update_metadata_files(temp_path: Path, deleted_files: set, epub_type: str):
         # In Calibre files, they are in the root
         metadata_base_path = temp_path
 
-    oebps_path = next(temp_path.glob("**/OEBPS"), temp_path)
     deleted_rel_paths = {f.relative_to(metadata_base_path).as_posix() for f in deleted_files}
 
     # Update content.opf
@@ -140,7 +136,7 @@ def clean_epub(epub_path: Path, keep_first: bool = False):
         try:
             with zipfile.ZipFile(epub_path, 'r') as zip_ref: zip_ref.extractall(temp_path)
         except zipfile.BadZipFile:
-            print(f"Error: Failed to unzip '{epub_path.name}'. The file may be corrupt or not a valid ePub. Aborting.")
+            print(f"Error: Failed to unzip '{epub_path.name}'. File corrupted or not a valid ePub. Aborting.")
             return
 
         # Step 1: Detect type and set the correct article marker
